@@ -1,0 +1,71 @@
+# Gramaticescu – verifică questions.xlsx și publică întrebările pe GitHub Pages (pentru aplicație).
+# Pornește singur când urci questions.xlsx sau scriptul.
+# Îl poți porni și manual: tabul „Actions” → „Publică întrebările” → „Run workflow”.
+name: Publică întrebările
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - questions.xlsx
+      - scripts/**
+      - .github/workflows/**
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Verifică și generează
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Descarcă fișierele
+        uses: actions/checkout@v6
+
+      - name: Instalează openpyxl
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet openpyxl
+
+      - name: Verifică Excelul și generează fișierele
+        run: .venv/bin/python scripts/build_questions.py
+
+      - name: Salvează JSON-ul în istoric
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/
+          if git diff --cached --quiet; then
+            echo "Nicio schimbare în întrebări."
+          else
+            git commit -m "Întrebări actualizate automat din questions.xlsx"
+            git push
+          fi
+
+      - name: Pregătește GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Încarcă site-ul
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+  deploy:
+    name: Publică pe GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publică
+        id: deployment
+        uses: actions/deploy-pages@v4
